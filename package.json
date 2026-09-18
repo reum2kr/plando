@@ -1,0 +1,16 @@
+{
+  "name": "plando-diary",
+  "version": "1.0.0",
+  "description": "플랜두씨 다이어리 - Plan/Do/See diary (ALEPH T06)",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "migrate": "node server/db/migrate.js",
+    "seed": "node server/db/seed.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "dotenv": "^16.4.5"
+  }
+}

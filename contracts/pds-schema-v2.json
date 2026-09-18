@@ -1,0 +1,100 @@
+{
+  "$schema_name": "plando-diary-schema",
+  "version": 2,
+  "description": "플랜두씨 다이어리 — plans → todos → execution_logs → review_notes",
+  "timezone_rule": {
+    "storage": "모든 TIMESTAMPTZ 컬럼은 UTC로 저장된다 (Postgres 기본).",
+    "display_and_business_logic": "지연(overdue) 판정, '오늘' 계산 등 날짜 비교는 항상 Asia/Seoul(KST, UTC+9) 기준으로 today를 구한 뒤 비교한다.",
+    "due_date_type": "DATE (시간 없음, 캘린더 날짜만)"
+  },
+  "tables": {
+    "plans": {
+      "description": "계획. 수정해도 id는 바뀌지 않고, 수정 전 값은 plan_revisions로 옮겨진다.",
+      "columns": {
+        "id": "UUID PK",
+        "user_id": "UUID NULL — T07에서 인증 붙을 때 사용",
+        "title": "TEXT NOT NULL",
+        "period_start": "DATE NOT NULL",
+        "period_end": "DATE NOT NULL",
+        "priority": "TEXT ('high'|'medium'|'low')",
+        "success_criteria": "TEXT NOT NULL",
+        "estimated_minutes": "INTEGER >= 0",
+        "created_at": "TIMESTAMPTZ",
+        "updated_at": "TIMESTAMPTZ",
+        "deleted_at": "TIMESTAMPTZ NULL — soft delete"
+      }
+    },
+    "plan_revisions": {
+      "description": "계획 수정 이력. 수정 API가 UPDATE 전에 현재 행을 이 표로 복사한 뒤 plans를 갱신한다.",
+      "columns": {
+        "id": "UUID PK",
+        "plan_id": "UUID FK -> plans.id",
+        "revision_no": "INTEGER (plan별 1,2,3... 증가)",
+        "title, period_start, period_end, priority, success_criteria, estimated_minutes": "수정 직전 값 스냅샷",
+        "superseded_at": "TIMESTAMPTZ — 이 값이 대체된 시각"
+      }
+    },
+    "todos": {
+      "description": "계획에 딸린 할 일.",
+      "columns": {
+        "id": "UUID PK",
+        "plan_id": "UUID FK -> plans.id",
+        "title": "TEXT NOT NULL",
+        "due_date": "DATE NULL",
+        "priority": "TEXT ('high'|'medium'|'low')",
+        "tags": "TEXT[]",
+        "estimated_minutes": "INTEGER >= 0",
+        "status": "TEXT ('pending'|'done')",
+        "completed_at": "TIMESTAMPTZ NULL",
+        "created_at": "TIMESTAMPTZ",
+        "updated_at": "TIMESTAMPTZ",
+        "deleted_at": "TIMESTAMPTZ NULL — soft delete, 모든 집계에서 제외"
+      }
+    },
+    "todo_completion_state": {
+      "description": "완료 버튼 연타 방지용 가드. todo_id가 PK라서 같은 todo에 대해 최대 1행만 존재 가능. 완료 시 INSERT ... ON CONFLICT(todo_id) DO NOTHING, 되돌릴 때 DELETE.",
+      "columns": {
+        "todo_id": "UUID PK, FK -> todos.id",
+        "completed_at": "TIMESTAMPTZ"
+      }
+    },
+    "execution_logs": {
+      "description": "실제로 한 일 기록. 계획/할 일 원본 값을 절대 덮어쓰지 않는다.",
+      "columns": {
+        "id": "UUID PK",
+        "todo_id": "UUID FK -> todos.id",
+        "started_at": "TIMESTAMPTZ NOT NULL",
+        "ended_at": "TIMESTAMPTZ NOT NULL",
+        "actual_minutes": "INTEGER >= 0",
+        "blocked_reason": "TEXT NULL",
+        "created_at": "TIMESTAMPTZ"
+      }
+    },
+    "review_notes": {
+      "description": "돌아보기에서 정한 '고칠 점 한 줄'. 다음 계획으로 이어질 때 carried_into_plan_id를 채운다.",
+      "columns": {
+        "id": "UUID PK",
+        "plan_id": "UUID FK -> plans.id",
+        "note": "TEXT NOT NULL",
+        "carried_into_plan_id": "UUID NULL FK -> plans.id",
+        "created_at": "TIMESTAMPTZ"
+      }
+    }
+  },
+  "relationships": [
+    "plans (1) --- (N) todos",
+    "plans (1) --- (N) plan_revisions",
+    "todos (1) --- (N) execution_logs",
+    "todos (1) --- (0..1) todo_completion_state",
+    "plans (1) --- (N) review_notes"
+  ],
+  "aggregation_rules_per_plan": {
+    "todo_count": "COUNT(todos WHERE plan_id=? AND deleted_at IS NULL)",
+    "done_count": "COUNT(todos WHERE plan_id=? AND deleted_at IS NULL AND status='done')",
+    "overdue_count": "COUNT(todos WHERE plan_id=? AND deleted_at IS NULL AND status<>'done' AND due_date < today_in_Asia/Seoul())",
+    "blocked_count": "COUNT(DISTINCT todo_id from execution_logs WHERE todo in plan's todos AND blocked_reason IS NOT NULL AND blocked_reason <> '')",
+    "estimated_total_minutes": "SUM(todos.estimated_minutes) over same todo set",
+    "actual_total_minutes": "SUM(execution_logs.actual_minutes) for those todos, 0 if none",
+    "diff_minutes": "actual_total_minutes - estimated_total_minutes"
+  }
+}

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>플랜두씨 다이어리</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <h1>플랜두씨 다이어리</h1>
+    <p class="notice">
+      지금은 로그인이 없어 링크를 아는 사람은 누구나 볼 수 있습니다. 남이 봐도 괜찮은 내용만 넣으세요.
+    </p>
+    <nav>
+      <button data-tab="plan" class="tab-btn active">계획 (Plan)</button>
+      <button data-tab="todo" class="tab-btn">할 일 (Do)</button>
+      <button data-tab="review" class="tab-btn">돌아보기 (See)</button>
+      <button id="exportBtn" class="tab-btn export">내보내기</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- PLAN TAB -->
+    <section id="tab-plan" class="tab-panel active">
+      <h2>계획 세우기</h2>
+      <form id="planForm">
+        <input type="text" id="p-title" placeholder="계획 제목 (예: 수면 습관 개선하기)" required />
+        <div class="row">
+          <label>기간 시작 <input type="date" id="p-start" required /></label>
+          <label>기간 끝 <input type="date" id="p-end" required /></label>
+        </div>
+        <div class="row">
+          <label>우선순위
+            <select id="p-priority">
+              <option value="high">높음</option>
+              <option value="medium" selected>중간</option>
+              <option value="low">낮음</option>
+            </select>
+          </label>
+          <label>하루 예상 시간(분) <input type="number" id="p-estimate" min="0" value="30" required /></label>
+        </div>
+        <textarea id="p-success" placeholder="성공 기준 (예: 평균 취침시각 자정 전, 주 5일 이상 7시간 수면)" required></textarea>
+        <button type="submit">계획 저장</button>
+      </form>
+
+      <div id="planList"></div>
+    </section>
+
+    <!-- TODO TAB -->
+    <section id="tab-todo" class="tab-panel">
+      <h2>할 일 다루기</h2>
+      <div class="row">
+        <label>계획 선택
+          <select id="t-plan-select"></select>
+        </label>
+      </div>
+
+      <form id="todoForm">
+        <input type="text" id="t-title" placeholder="할 일 제목" required />
+        <div class="row">
+          <label>마감일 <input type="date" id="t-due" /></label>
+          <label>우선순위
+            <select id="t-priority">
+              <option value="high">높음</option>
+              <option value="medium" selected>중간</option>
+              <option value="low">낮음</option>
+            </select>
+          </label>
+          <label>예상 시간(분) <input type="number" id="t-estimate" min="0" value="15" required /></label>
+        </div>
+        <input type="text" id="t-tags" placeholder="태그 (쉼표로 구분, 예: 저녁루틴,아침루틴)" />
+        <button type="submit">할 일 추가</button>
+      </form>
+
+      <div class="row toolbar">
+        <input type="text" id="t-search" placeholder="검색어" />
+        <select id="t-filter-status">
+          <option value="">전체 상태</option>
+          <option value="pending">진행 중</option>
+          <option value="done">완료</option>
+        </select>
+        <select id="t-sort">
+          <option value="due_date">마감일순</option>
+          <option value="priority">우선순위순</option>
+          <option value="created_at">등록순</option>
+          <option value="title">제목순</option>
+        </select>
+        <button id="t-search-btn">검색/정렬 적용</button>
+      </div>
+      <p class="sort-note" id="sortNote"></p>
+
+      <ul id="todoList"></ul>
+    </section>
+
+    <!-- REVIEW TAB -->
+    <section id="tab-review" class="tab-panel">
+      <h2>돌아보기 (See)</h2>
+      <label>계획 선택
+        <select id="r-plan-select"></select>
+      </label>
+
+      <div class="review-grid" id="reviewGrid"></div>
+
+      <div id="drilldownArea"></div>
+
+      <h3>고칠 점 한 줄 → 다음 계획으로</h3>
+      <form id="noteForm">
+        <input type="text" id="r-note" placeholder="예: 카페인 제한 시각을 오후 2시에서 12시로 당기기" required />
+        <button type="submit">저장</button>
+      </form>
+      <ul id="noteList"></ul>
+    </section>
+  </main>
+
+  <!-- 실행 기록 입력 모달 -->
+  <dialog id="logDialog">
+    <form id="logForm" method="dialog">
+      <h3>실제로 한 일 기록</h3>
+      <input type="hidden" id="l-todo-id" />
+      <label>시작 시각 <input type="datetime-local" id="l-start" required /></label>
+      <label>끝난 시각 <input type="datetime-local" id="l-end" required /></label>
+      <label>실제로 걸린 시간(분) <input type="number" id="l-actual" min="0" required /></label>
+      <label>막혔던 이유 (없으면 비워두기) <input type="text" id="l-blocked" /></label>
+      <div class="row">
+        <button type="submit">저장</button>
+        <button type="button" id="l-cancel">취소</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>
