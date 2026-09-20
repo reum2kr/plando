@@ -61,7 +61,6 @@ router.get('/:planId', async (req, res) => {
 });
 
 // GET /api/review/:planId/drilldown/:metric
-// 집계 숫자를 눌렀을 때 그 숫자를 만든 실제 기록으로 이동하기 위한 엔드포인트.
 router.get('/:planId/drilldown/:metric', async (req, res) => {
   const { planId, metric } = req.params;
   const today = todayKstDateString();
@@ -135,6 +134,28 @@ router.post('/:planId/notes', async (req, res) => {
     [req.params.planId, note, carried_into_plan_id || null]
   );
   res.status(201).json(rows[0]);
+});
+
+// PUT /api/review/:planId/notes/:noteId - 메모 수정
+router.put('/:planId/notes/:noteId', async (req, res) => {
+  const { note } = req.body;
+  if (!note) return res.status(400).json({ error: 'note는 필수입니다.' });
+  const { rows } = await pool.query(
+    `UPDATE review_notes SET note=$1 WHERE id=$2 AND plan_id=$3 RETURNING *`,
+    [note, req.params.noteId, req.params.planId]
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'note not found' });
+  res.json(rows[0]);
+});
+
+// DELETE /api/review/:planId/notes/:noteId - 메모 삭제
+router.delete('/:planId/notes/:noteId', async (req, res) => {
+  const { rows } = await pool.query(
+    `DELETE FROM review_notes WHERE id=$1 AND plan_id=$2 RETURNING id`,
+    [req.params.noteId, req.params.planId]
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'note not found' });
+  res.status(204).end();
 });
 
 module.exports = router;
