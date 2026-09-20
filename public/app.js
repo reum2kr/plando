@@ -4,8 +4,11 @@
 
 const state = {
   plans: [],
-  currentTodoPlanId: null,
-  currentReviewPlanId: null,
+  currentPlanId: null,
+  selectedDate: null,      // 달력에서 클릭한 날짜 (YYYY-MM-DD) 또는 null(전체보기)
+  calYear: null,
+  calMonth: null,           // 0~11
+  completionByDate: {},     // { "YYYY-MM-DD": 완료 개수 }
 };
 
 function el(tag, opts = {}, children = []) {
@@ -33,23 +36,27 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
-// ---------- 탭 전환 ----------
-document.querySelectorAll('.tab-btn[data-tab]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn[data-tab]').forEach((b) => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
-    if (btn.dataset.tab === 'todo') loadTodos();
-    if (btn.dataset.tab === 'review') loadReview();
+// KST 기준 날짜 문자열로 변환 ("YYYY-MM-DD")
+function toKstDateString(dateLike) {
+  const d = new Date(dateLike);
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
   });
+  return fmt.format(d);
+}
+
+// ---------- 시작 화면 ----------
+document.getElementById('startBtn').addEventListener('click', () => {
+  document.getElementById('splashScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'block';
+  loadPlans();
 });
 
 // ---------- 계획 (Plan) ----------
 async function loadPlans() {
   state.plans = await api('/plans');
   renderPlanList();
-  renderPlanSelects();
+  renderPlanSelect();
 }
 
 function renderPlanList() {
@@ -73,16 +80,20 @@ function renderPlanList() {
   }
 }
 
-function renderPlanSelects() {
-  for (const selectId of ['t-plan-select', 'r-plan-select']) {
-    const sel = document.getElementById(selectId);
-    const prev = sel.value;
-    sel.textContent = '';
-    for (const plan of state.plans) {
-      sel.appendChild(el('option', { value: plan.id, text: plan.title }));
-    }
-    if (prev && state.plans.some((p) => p.id === prev)) sel.value = prev;
+function renderPlanSelect() {
+  const sel = document.getElementById('t-plan-select');
+  const prev = sel.value;
+  sel.textContent = '';
+  for (const plan of state.plans) {
+    sel.appendChild(el('option', { value: plan.id, text: plan.title }));
   }
+  if (prev && state.plans.some((p) => p.id === prev)) {
+    sel.value = prev;
+  }
+  if (!sel.value && state.plans.length > 0) {
+    sel.value = state.plans[0].id;
+  }
+  onPlanChanged();
 }
 
 document.getElementById('planForm').addEventListener('submit', async (e) => {
@@ -132,12 +143,114 @@ async function showPlanHistory(planId) {
   }
 }
 
-// ---------- 할 일 (Todo) ----------
-document.getElementById('t-plan-select').addEventListener('change', loadTodos);
+// ---------- 계획 선택이 바뀌면: 달력 + 할 일 + 돌아보기 모두 갱신 ----------
+document.getElementById('t-plan-select').addEventListener('change', onPlanChanged);
 
-async function loadTodos() {
+function onPlanChanged() {
   const planId = document.getElementById('t-plan-select').value;
-  state.currentTodoPlanId = planId;
+  state.currentPlanId = planId || null;
+  state.selectedDate = null;
+  document.getElementById('clearDateFilter').style.display = 'none';
+  if (!planId) return;
+
+  const today = new Date();
+  const kstToday = toKstDateString(today);
+  const [y, m] = kstToday.split('-').map(Number);
+  state.calYear = y;
+  state.calMonth = m - 1;
+
+  refreshRightColumn();
+}
+
+async function refreshRightColumn() {
+  if (!state.currentPlanId) return;
+  await loadCalendarData();
+  renderCalendar();
+  await loadTodos();
+  await loadReview();
+}
+
+// ---------- 달력 ----------
+document.getElementById('calPrev').addEventListener('click', () => {
+  state.calMonth -= 1;
+  if (state.calMonth < 0) { state.calMonth = 11; state.calYear -= 1; }
+  renderCalendar();
+});
+document.getElementById('calNext').addEventListener('click', () => {
+  state.calMonth += 1;
+  if (state.calMonth > 11) { state.calMonth = 0; state.calYear += 1; }
+  renderCalendar();
+});
+
+// 선택한 계획의 모든 할 일을 가져와 완료된 날짜별 개수를 집계한다 (완료 시각 completed_at 기준, KST).
+async function loadCalendarData() {
+  const planId = state.currentPlanId;
+  const { items } = await api(`/todos?plan_id=${planId}&sort=due_date`);
+  const map = {};
+  for (const todo of items) {
+    if (todo.status === 'done' && todo.completed_at) {
+      const day = toKstDateString(todo.completed_at);
+      map[day] = (map[day] || 0) + 1;
+    }
+  }
+  state.completionByDate = map;
+}
+
+function renderCalendar() {
+  const { calYear: year, calMonth: month } = state;
+  document.getElementById('calTitle').textContent = `${year}년 ${month + 1}월`;
+
+  const grid = document.getElementById('calendarGrid');
+  grid.textContent = '';
+
+  const firstDay = new Date(year, month, 1).getDay(); // 0=일요일
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayKst = toKstDateString(new Date());
+  const pad = (n) => String(n).padStart(2, '0');
+
+  for (let i = 0; i < firstDay; i++) {
+    grid.appendChild(el('div', { class: 'cal-cell empty' }));
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
+    const count = state.completionByDate[dateStr] || 0;
+
+    const classes = ['cal-cell'];
+    if (dateStr === todayKst) classes.push('today');
+    if (dateStr === state.selectedDate) classes.push('selected');
+    if (count > 0) classes.push('has-done');
+
+    const cell = el('button', { type: 'button', class: classes.join(' '), onclick: () => onDateClick(dateStr) });
+    cell.appendChild(el('span', { class: 'cal-day-num', text: String(day) }));
+    if (count > 0) {
+      cell.appendChild(el('span', { class: 'cal-badge', text: String(count) }));
+    }
+    grid.appendChild(cell);
+  }
+}
+
+function onDateClick(dateStr) {
+  if (state.selectedDate === dateStr) {
+    state.selectedDate = null; // 같은 날짜 다시 누르면 선택 해제
+  } else {
+    state.selectedDate = dateStr;
+  }
+  document.getElementById('clearDateFilter').style.display = state.selectedDate ? 'inline-block' : 'none';
+  renderCalendar();
+  loadTodos();
+}
+
+document.getElementById('clearDateFilter').addEventListener('click', () => {
+  state.selectedDate = null;
+  document.getElementById('clearDateFilter').style.display = 'none';
+  renderCalendar();
+  loadTodos();
+});
+
+// ---------- 할 일 (Todo) ----------
+async function loadTodos() {
+  const planId = state.currentPlanId;
   if (!planId) return;
 
   const params = new URLSearchParams({ plan_id: planId });
@@ -149,12 +262,24 @@ async function loadTodos() {
   params.set('sort', sort);
 
   const { items, sort: appliedSort, order, tie_break } = await api(`/todos?${params.toString()}`);
-  document.getElementById('sortNote').textContent =
-    `정렬 기준: ${appliedSort} (${order}) · 동률일 때: ${tie_break}`;
+  const filtered = state.selectedDate
+    ? items.filter((t) => t.due_date === state.selectedDate)
+    : items;
+
+  const noteText = state.selectedDate
+    ? `${state.selectedDate}의 할 일만 보고 있어요 · 정렬 기준: ${appliedSort} (${order})`
+    : `정렬 기준: ${appliedSort} (${order}) · 동률일 때: ${tie_break}`;
+  document.getElementById('sortNote').textContent = noteText;
 
   const list = document.getElementById('todoList');
   list.textContent = '';
-  for (const todo of items) {
+
+  if (filtered.length === 0) {
+    list.appendChild(el('li', { class: 'muted', text: state.selectedDate ? '이 날짜에 마감인 할 일이 없습니다.' : '할 일이 없습니다.' }));
+    return;
+  }
+
+  for (const todo of filtered) {
     const li = el('li', { class: todo.status === 'done' ? 'done' : '' });
     li.appendChild(el('strong', { text: todo.title }));
     li.appendChild(el('span', { class: 'meta', text: ` 마감:${todo.due_date || '-'} 우선순위:${todo.priority} 예상:${todo.estimated_minutes}분 태그:${(todo.tags||[]).join(',')||'-'}` }));
@@ -174,7 +299,7 @@ async function loadTodos() {
 
 document.getElementById('todoForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const planId = document.getElementById('t-plan-select').value;
+  const planId = state.currentPlanId;
   if (!planId) return alert('먼저 계획을 선택하세요.');
   const tags = document.getElementById('t-tags').value.split(',').map((s) => s.trim()).filter(Boolean);
   const body = {
@@ -189,6 +314,8 @@ document.getElementById('todoForm').addEventListener('submit', async (e) => {
     await api('/todos', { method: 'POST', body: JSON.stringify(body) });
     e.target.reset();
     document.getElementById('t-estimate').value = 15;
+    await loadCalendarData();
+    renderCalendar();
     await loadTodos();
   } catch (err) {
     alert(err.message);
@@ -220,6 +347,8 @@ async function openEditTodo(todo) {
         tags: tagsStr.split(',').map((s) => s.trim()).filter(Boolean),
       }),
     });
+    await loadCalendarData();
+    renderCalendar();
     await loadTodos();
   } catch (err) {
     alert(err.message);
@@ -233,7 +362,10 @@ async function toggleDone(todo) {
     } else {
       await api(`/todos/${todo.id}/complete`, { method: 'POST' });
     }
+    await loadCalendarData();
+    renderCalendar();
     await loadTodos();
+    await loadReview();
   } catch (err) {
     alert(err.message);
   }
@@ -243,6 +375,8 @@ async function deleteTodo(id) {
   if (!confirm('삭제할까요?')) return;
   try {
     await api(`/todos/${id}`, { method: 'DELETE' });
+    await loadCalendarData();
+    renderCalendar();
     await loadTodos();
   } catch (err) {
     alert(err.message);
@@ -270,6 +404,7 @@ document.getElementById('logForm').addEventListener('submit', async (e) => {
     logDialog.close();
     document.getElementById('logForm').reset();
     await loadTodos();
+    await loadReview();
   } catch (err) {
     alert(err.message);
   }
@@ -333,6 +468,7 @@ async function editLog(log, todoId, box) {
       }),
     });
     await renderLogsBox(todoId, box);
+    await loadReview();
   } catch (err) {
     alert(err.message);
   }
@@ -343,17 +479,15 @@ async function deleteLog(logId, todoId, box) {
   try {
     await api(`/logs/${logId}`, { method: 'DELETE' });
     await renderLogsBox(todoId, box);
+    await loadReview();
   } catch (err) {
     alert(err.message);
   }
 }
 
-// ---------- 돌아보기 (Review/See) ----------
-document.getElementById('r-plan-select').addEventListener('change', loadReview);
-
+// ---------- 돌아보기 (See) ----------
 async function loadReview() {
-  const planId = document.getElementById('r-plan-select').value;
-  state.currentReviewPlanId = planId;
+  const planId = state.currentPlanId;
   if (!planId) return;
 
   const agg = await api(`/review/${planId}`);
@@ -435,7 +569,7 @@ async function deleteNote(planId, noteId) {
 
 document.getElementById('noteForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const planId = document.getElementById('r-plan-select').value;
+  const planId = state.currentPlanId;
   const note = document.getElementById('r-note').value;
   try {
     await api(`/review/${planId}/notes`, { method: 'POST', body: JSON.stringify({ note }) });
@@ -450,6 +584,3 @@ document.getElementById('noteForm').addEventListener('submit', async (e) => {
 document.getElementById('exportBtn').addEventListener('click', () => {
   window.location.href = '/api/export';
 });
-
-// ---------- 초기 로드 ----------
-loadPlans();
