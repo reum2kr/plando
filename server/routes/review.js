@@ -61,6 +61,7 @@ router.get('/:planId', async (req, res) => {
 });
 
 // GET /api/review/:planId/drilldown/:metric
+// 집계 숫자를 눌렀을 때 그 숫자를 만든 실제 기록으로 이동하기 위한 엔드포인트.
 router.get('/:planId/drilldown/:metric', async (req, res) => {
   const { planId, metric } = req.params;
   const today = todayKstDateString();
@@ -136,15 +137,27 @@ router.post('/:planId/notes', async (req, res) => {
   res.status(201).json(rows[0]);
 });
 
-// PUT /api/review/:planId/notes/:noteId - 메모 수정
+// PUT /api/review/:planId/notes/:noteId - 메모 내용 수정, 또는 "다음 계획으로 넘기기"
+// (carried_into_plan_id를 넘기면 그 계획으로 연결된다. note만 보내면 내용만 바뀐다.)
 router.put('/:planId/notes/:noteId', async (req, res) => {
-  const { note } = req.body;
-  if (!note) return res.status(400).json({ error: 'note는 필수입니다.' });
-  const { rows } = await pool.query(
-    `UPDATE review_notes SET note=$1 WHERE id=$2 AND plan_id=$3 RETURNING *`,
-    [note, req.params.noteId, req.params.planId]
+  const cur = await pool.query(
+    `SELECT * FROM review_notes WHERE id=$1 AND plan_id=$2`,
+    [req.params.noteId, req.params.planId]
   );
-  if (rows.length === 0) return res.status(404).json({ error: 'note not found' });
+  if (cur.rows.length === 0) return res.status(404).json({ error: 'note not found' });
+  const b = cur.rows[0];
+  const { note, carried_into_plan_id } = req.body;
+  if (note !== undefined && !note) return res.status(400).json({ error: 'note는 빈 값일 수 없습니다.' });
+
+  const { rows } = await pool.query(
+    `UPDATE review_notes SET note=$1, carried_into_plan_id=$2 WHERE id=$3 AND plan_id=$4 RETURNING *`,
+    [
+      note ?? b.note,
+      carried_into_plan_id !== undefined ? (carried_into_plan_id || null) : b.carried_into_plan_id,
+      req.params.noteId,
+      req.params.planId,
+    ]
+  );
   res.json(rows[0]);
 });
 
