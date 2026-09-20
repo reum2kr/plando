@@ -538,11 +538,45 @@ async function loadNotes(planId) {
   for (const n of notes) {
     const li = el('li');
     li.appendChild(el('span', { text: `${n.note} (${n.created_at}) ` }));
+
+    if (n.carried_into_plan_id) {
+      const target = state.plans.find((p) => p.id === n.carried_into_plan_id);
+      const label = target ? `다음 계획 "${target.title}"로 넘김` : '다음 계획으로 넘김';
+      li.appendChild(el('span', { class: 'success', text: label }));
+    } else {
+      const otherPlans = state.plans.filter((p) => p.id !== planId);
+      if (otherPlans.length > 0) {
+        const sel = el('select', { class: 'carry-select' });
+        for (const p of otherPlans) {
+          sel.appendChild(el('option', { value: p.id, text: p.title }));
+        }
+        const carryBtn = el('button', {
+          text: '다음 계획으로 넘기기',
+          onclick: () => carryNote(planId, n, sel.value),
+        });
+        li.appendChild(sel);
+        li.appendChild(carryBtn);
+      }
+    }
+
     const editBtn = el('button', { text: '수정', onclick: () => editNote(planId, n) });
     const delBtn = el('button', { text: '삭제', onclick: () => deleteNote(planId, n.id) });
     li.appendChild(editBtn);
     li.appendChild(delBtn);
     list.appendChild(li);
+  }
+}
+
+async function carryNote(planId, note, targetPlanId) {
+  if (!targetPlanId) return alert('넘길 계획이 없습니다. 다른 계획을 먼저 만들어 주세요.');
+  try {
+    await api(`/review/${planId}/notes/${note.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ carried_into_plan_id: targetPlanId }),
+    });
+    await loadNotes(planId);
+  } catch (err) {
+    alert(err.message);
   }
 }
 
