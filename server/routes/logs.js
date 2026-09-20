@@ -34,4 +34,33 @@ router.post('/', async (req, res) => {
   res.status(201).json(rows[0]);
 });
 
+// PUT /api/logs/:id - 실행 기록 수정
+router.put('/:id', async (req, res) => {
+  const { id } = req.params;
+  const cur = await pool.query(`SELECT * FROM execution_logs WHERE id=$1`, [id]);
+  if (cur.rows.length === 0) return res.status(404).json({ error: 'log not found' });
+  const b = cur.rows[0];
+  const { started_at, ended_at, actual_minutes, blocked_reason } = req.body;
+
+  const { rows } = await pool.query(
+    `UPDATE execution_logs SET started_at=$1, ended_at=$2, actual_minutes=$3, blocked_reason=$4
+     WHERE id=$5 RETURNING *`,
+    [
+      started_at ?? b.started_at,
+      ended_at ?? b.ended_at,
+      actual_minutes ?? b.actual_minutes,
+      blocked_reason !== undefined ? (blocked_reason || null) : b.blocked_reason,
+      id,
+    ]
+  );
+  res.json(rows[0]);
+});
+
+// DELETE /api/logs/:id - 실행 기록 삭제
+router.delete('/:id', async (req, res) => {
+  const { rows } = await pool.query(`DELETE FROM execution_logs WHERE id=$1 RETURNING id`, [req.params.id]);
+  if (rows.length === 0) return res.status(404).json({ error: 'log not found' });
+  res.status(204).end();
+});
+
 module.exports = router;
