@@ -84,7 +84,7 @@
         <div class="todo-block">
           <div class="todo-block-header">
             <h2>할 일 다루기</h2>
-            <button type="button" id="clearDateFilter" class="ghost-btn" style="display:none;">전체보기</button>
+            <button type="button" id="clearDateFilter" class="ghost-btn">전체보기</button>
           </div>
 
           <form id="todoForm">
@@ -122,33 +122,6 @@
           <p class="sort-note" id="sortNote"></p>
 
           <ul id="todoList"></ul>
-        </div>
-
-        <div class="routine-block">
-          <div class="todo-block-header">
-            <h2>루틴 (반복 할 일)</h2>
-          </div>
-          <p class="muted">기간을 정해두면 그 기간의 날마다 같은 할 일이 자동으로 생겨요. 나중에 기간만 조정해도 돼요.</p>
-          <form id="routineForm">
-            <input type="text" id="rt-title" placeholder="루틴 제목 (예: 명상 하기)" required />
-            <div class="row">
-              <label>시작일 <input type="date" id="rt-start" required /></label>
-              <label>끝일 <input type="date" id="rt-end" required /></label>
-            </div>
-            <div class="row">
-              <label>우선순위
-                <select id="rt-priority">
-                  <option value="high">높음</option>
-                  <option value="medium" selected>중간</option>
-                  <option value="low">낮음</option>
-                </select>
-              </label>
-              <label>예상 시간(분) <input type="number" id="rt-estimate" min="0" value="15" required /></label>
-            </div>
-            <input type="text" id="rt-tags" placeholder="태그 (쉼표로 구분)" />
-            <button type="submit">루틴 만들기</button>
-          </form>
-          <ul id="routineList"></ul>
         </div>
 
         <div class="review-block">
