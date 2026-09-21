@@ -4,6 +4,7 @@
 
 const state = {
   plans: [],
+  routines: [],
   currentPlanId: null,
   selectedDate: null,      // 달력에서 클릭한 날짜 (YYYY-MM-DD) 또는 null(전체보기)
   calYear: null,
@@ -80,6 +81,13 @@ function renderPlanList() {
   }
 }
 
+// 오늘(KST) 날짜가 기간(period_start~period_end) 안에 드는 계획을 찾는다.
+// 여러 개면 가장 최근에 만든 것, 하나도 없으면 null.
+function findPlanForToday() {
+  const todayKst = toKstDateString(new Date());
+  return state.plans.find((p) => p.period_start <= todayKst && todayKst <= p.period_end) || null;
+}
+
 function renderPlanSelect() {
   const sel = document.getElementById('t-plan-select');
   const prev = sel.value;
@@ -88,10 +96,17 @@ function renderPlanSelect() {
     sel.appendChild(el('option', { value: plan.id, text: plan.title }));
   }
   if (prev && state.plans.some((p) => p.id === prev)) {
+    // 이미 사람이 고른 계획이 있으면 그대로 둔다 (목록 새로고침만으로 선택이 바뀌지 않도록).
     sel.value = prev;
-  }
-  if (!sel.value && state.plans.length > 0) {
-    sel.value = state.plans[0].id;
+  } else {
+    // 처음 열었을 때는 오늘 날짜가 기간에 포함되는 계획을 우선 선택하고,
+    // 해당하는 계획이 없으면 가장 최근에 만든 계획을 선택한다.
+    const todaysPlan = findPlanForToday();
+    if (todaysPlan) {
+      sel.value = todaysPlan.id;
+    } else if (state.plans.length > 0) {
+      sel.value = state.plans[0].id;
+    }
   }
   onPlanChanged();
 }
@@ -168,6 +183,7 @@ async function refreshRightColumn() {
   renderCalendar();
   await loadTodos();
   await loadReview();
+  await loadRoutines();
 }
 
 // ---------- 달력 ----------
@@ -283,6 +299,9 @@ async function loadTodos() {
     const li = el('li', { class: todo.status === 'done' ? 'done' : '' });
     li.appendChild(el('strong', { text: todo.title }));
     li.appendChild(el('span', { class: 'meta', text: ` 마감:${todo.due_date || '-'} 우선순위:${todo.priority} 예상:${todo.estimated_minutes}분 태그:${(todo.tags||[]).join(',')||'-'}` }));
+    if (todo.routine_id) {
+      li.appendChild(el('span', { class: 'routine-badge', text: ' 🔁 루틴' }));
+    }
 
     const editBtn = el('button', { text: '수정', onclick: () => openEditTodo(todo) });
     const doneBtn = el('button', { text: todo.status === 'done' ? '되돌리기' : '완료' , onclick: () => toggleDone(todo) });
@@ -613,6 +632,94 @@ document.getElementById('noteForm').addEventListener('submit', async (e) => {
     alert(err.message);
   }
 });
+
+// ---------- 루틴 (반복 할 일) ----------
+// 루틴은 "기간(start~end)"을 가진 템플릿이고, 그 기간의 날마다 실제 할 일(todo)을 하나씩 만들어 둔다.
+// 나중에 기간을 조정하면 새로 포함된 날짜엔 할 일이 추가되고, 빠진 날짜의 할 일 중
+// 아직 완료 전이고 실행 기록도 없는 것만 지워진다(이미 있었던 기록은 그대로 보존).
+async function loadRoutines() {
+  const planId = state.currentPlanId;
+  if (!planId) return;
+  state.routines = await api(`/routines?plan_id=${planId}`);
+  renderRoutines();
+}
+
+function renderRoutines() {
+  const list = document.getElementById('routineList');
+  list.textContent = '';
+  if (!state.routines || state.routines.length === 0) {
+    list.appendChild(el('li', { class: 'muted', text: '아직 만든 루틴이 없습니다.' }));
+    return;
+  }
+  for (const r of state.routines) {
+    const li = el('li');
+    li.appendChild(el('strong', { text: r.title }));
+    li.appendChild(el('span', { class: 'meta', text: ` 기간:${r.start_date} ~ ${r.end_date} · 우선순위:${r.priority} · 예상:${r.estimated_minutes}분` }));
+    const editBtn = el('button', { text: '기간 수정', onclick: () => openEditRoutine(r) });
+    const delBtn = el('button', { text: '삭제', onclick: () => deleteRoutine(r.id) });
+    li.appendChild(el('div', { class: 'row' }, [editBtn, delBtn]));
+    list.appendChild(li);
+  }
+}
+
+document.getElementById('routineForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const planId = state.currentPlanId;
+  if (!planId) return alert('먼저 계획을 선택하세요.');
+  const tags = document.getElementById('rt-tags').value.split(',').map((s) => s.trim()).filter(Boolean);
+  const body = {
+    plan_id: planId,
+    title: document.getElementById('rt-title').value,
+    start_date: document.getElementById('rt-start').value,
+    end_date: document.getElementById('rt-end').value,
+    priority: document.getElementById('rt-priority').value,
+    estimated_minutes: Number(document.getElementById('rt-estimate').value),
+    tags,
+  };
+  try {
+    await api('/routines', { method: 'POST', body: JSON.stringify(body) });
+    e.target.reset();
+    document.getElementById('rt-estimate').value = 15;
+    await loadRoutines();
+    await loadCalendarData();
+    renderCalendar();
+    await loadTodos();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+async function openEditRoutine(routine) {
+  const start_date = prompt('시작일 (YYYY-MM-DD) — 이 날짜부터 매일 할 일이 생겨요', routine.start_date);
+  if (start_date === null) return;
+  const end_date = prompt('끝일 (YYYY-MM-DD)', routine.end_date);
+  if (end_date === null) return;
+  try {
+    await api(`/routines/${routine.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ start_date, end_date }),
+    });
+    await loadRoutines();
+    await loadCalendarData();
+    renderCalendar();
+    await loadTodos();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function deleteRoutine(id) {
+  if (!confirm('이 루틴을 삭제할까요? (이미 완료했거나 기록이 남은 할 일은 그대로 남아요)')) return;
+  try {
+    await api(`/routines/${id}`, { method: 'DELETE' });
+    await loadRoutines();
+    await loadCalendarData();
+    renderCalendar();
+    await loadTodos();
+  } catch (err) {
+    alert(err.message);
+  }
+}
 
 // ---------- 내보내기 ----------
 document.getElementById('exportBtn').addEventListener('click', () => {
