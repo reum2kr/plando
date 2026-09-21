@@ -7,6 +7,7 @@ const todosRouter = require('./routes/todos');
 const logsRouter = require('./routes/logs');
 const reviewRouter = require('./routes/review');
 const exportRouter = require('./routes/export');
+const routinesRouter = require('./routes/routines');
 
 const app = express();
 app.use(express.json());
@@ -16,6 +17,7 @@ app.use('/api/todos', todosRouter);
 app.use('/api/logs', logsRouter);
 app.use('/api/review', reviewRouter);
 app.use('/api/export', exportRouter);
+app.use('/api/routines', routinesRouter);
 
 // 정적 프론트엔드 (public/) 서빙. HTML로 넘어온 텍스트는 innerText로만
 // 렌더링해서(app.js 참고) 스크립트 모양 글자가 그대로 문자열로 보이게 한다.
