@@ -6,7 +6,8 @@ const state = {
   plans: [],
   routines: [],
   currentPlanId: null,
-  selectedDate: null,      // 달력에서 클릭한 날짜 (YYYY-MM-DD) 또는 null(전체보기)
+  selectedDate: null,      // 달력에서 클릭한 날짜 (YYYY-MM-DD) 또는 null(선택 안 함)
+  showAllTodos: false,      // "전체보기"를 눌렀을 때만 true. 기본은 날짜를 골라야 할 일이 보인다.
   calYear: null,
   calMonth: null,           // 0~11
   completionByDate: {},     // { "YYYY-MM-DD": 완료 개수 }
@@ -165,7 +166,7 @@ function onPlanChanged() {
   const planId = document.getElementById('t-plan-select').value;
   state.currentPlanId = planId || null;
   state.selectedDate = null;
-  document.getElementById('clearDateFilter').style.display = 'none';
+  state.showAllTodos = false;
   if (!planId) return;
 
   const today = new Date();
@@ -252,22 +253,33 @@ function onDateClick(dateStr) {
   } else {
     state.selectedDate = dateStr;
   }
-  document.getElementById('clearDateFilter').style.display = state.selectedDate ? 'inline-block' : 'none';
+  state.showAllTodos = false;
   renderCalendar();
   loadTodos();
 }
 
 document.getElementById('clearDateFilter').addEventListener('click', () => {
   state.selectedDate = null;
-  document.getElementById('clearDateFilter').style.display = 'none';
+  state.showAllTodos = true;
   renderCalendar();
   loadTodos();
 });
 
 // ---------- 할 일 (Todo) ----------
+// 기본적으로는 아무 할 일도 띄우지 않는다. 달력에서 날짜를 고르면 그 날짜의 할 일만,
+// "전체보기"를 누르면 전체 목록을 보여준다 (루틴으로 할 일이 많아져도 목록이 한눈에 정신없지 않도록).
 async function loadTodos() {
   const planId = state.currentPlanId;
   if (!planId) return;
+
+  const list = document.getElementById('todoList');
+
+  if (!state.selectedDate && !state.showAllTodos) {
+    list.textContent = '';
+    list.appendChild(el('li', { class: 'muted', text: '달력에서 날짜를 선택하면 그 날의 할 일이 보여요. (또는 "전체보기"를 눌러 모든 할 일을 볼 수 있어요)' }));
+    document.getElementById('sortNote').textContent = '';
+    return;
+  }
 
   const params = new URLSearchParams({ plan_id: planId });
   const q = document.getElementById('t-search').value;
@@ -287,7 +299,6 @@ async function loadTodos() {
     : `정렬 기준: ${appliedSort} (${order}) · 동률일 때: ${tie_break}`;
   document.getElementById('sortNote').textContent = noteText;
 
-  const list = document.getElementById('todoList');
   list.textContent = '';
 
   if (filtered.length === 0) {
@@ -309,7 +320,15 @@ async function loadTodos() {
     const logsBox = el('div', { class: 'logs-box', id: `logs-${todo.id}` });
     const viewLogsBtn = el('button', { text: '실행 기록 보기', onclick: () => toggleLogsView(todo.id, logsBox) });
     const delBtn = el('button', { text: '삭제', onclick: () => deleteTodo(todo.id) });
-    li.appendChild(el('div', { class: 'row' }, [editBtn, doneBtn, logBtn, viewLogsBtn, delBtn]));
+
+    const rowBtns = [editBtn, doneBtn, logBtn, viewLogsBtn, delBtn];
+    if (todo.routine_id) {
+      rowBtns.push(el('button', { text: '기간 수정', onclick: () => editTodoRoutine(todo) }));
+      rowBtns.push(el('button', { text: '반복 삭제', onclick: () => deleteTodoRoutine(todo) }));
+    } else {
+      rowBtns.push(el('button', { text: '반복 설정', onclick: () => setTodoRoutine(todo) }));
+    }
+    li.appendChild(el('div', { class: 'row' }, rowBtns));
     li.appendChild(logsBox);
 
     list.appendChild(li);
@@ -635,51 +654,48 @@ document.getElementById('noteForm').addEventListener('submit', async (e) => {
 
 // ---------- 루틴 (반복 할 일) ----------
 // 루틴은 "기간(start~end)"을 가진 템플릿이고, 그 기간의 날마다 실제 할 일(todo)을 하나씩 만들어 둔다.
-// 나중에 기간을 조정하면 새로 포함된 날짜엔 할 일이 추가되고, 빠진 날짜의 할 일 중
+// 따로 만드는 화면 없이, 이미 만든 할 일에서 바로 "반복 설정"으로 기간을 정하면 그 할 일 내용 그대로
+// 루틴이 만들어진다. 기간을 조정하면 새로 포함된 날짜엔 할 일이 추가되고, 빠진 날짜의 할 일 중
 // 아직 완료 전이고 실행 기록도 없는 것만 지워진다(이미 있었던 기록은 그대로 보존).
 async function loadRoutines() {
   const planId = state.currentPlanId;
   if (!planId) return;
   state.routines = await api(`/routines?plan_id=${planId}`);
-  renderRoutines();
 }
 
-function renderRoutines() {
-  const list = document.getElementById('routineList');
-  list.textContent = '';
-  if (!state.routines || state.routines.length === 0) {
-    list.appendChild(el('li', { class: 'muted', text: '아직 만든 루틴이 없습니다.' }));
-    return;
-  }
-  for (const r of state.routines) {
-    const li = el('li');
-    li.appendChild(el('strong', { text: r.title }));
-    li.appendChild(el('span', { class: 'meta', text: ` 기간:${r.start_date} ~ ${r.end_date} · 우선순위:${r.priority} · 예상:${r.estimated_minutes}분` }));
-    const editBtn = el('button', { text: '기간 수정', onclick: () => openEditRoutine(r) });
-    const delBtn = el('button', { text: '삭제', onclick: () => deleteRoutine(r.id) });
-    li.appendChild(el('div', { class: 'row' }, [editBtn, delBtn]));
-    list.appendChild(li);
-  }
-}
+// 평범한 할 일을 "반복(루틴)"으로 바꾼다: 같은 제목/우선순위/예상시간/태그로
+// 고른 기간의 날마다 할 일을 만든다. 원래 할 일은 아직 완료 전이고 실행 기록도 없을 때만
+// 정리하고(중복 방지), 이미 완료했거나 기록이 남아있으면 그대로 남겨둔다.
+async function setTodoRoutine(todo) {
+  const start_date = prompt('반복시킬 기간의 시작일 (YYYY-MM-DD)', todo.due_date || toKstDateString(new Date()));
+  if (start_date === null) return;
+  const end_date = prompt('끝일 (YYYY-MM-DD)', start_date);
+  if (end_date === null) return;
 
-document.getElementById('routineForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const planId = state.currentPlanId;
-  if (!planId) return alert('먼저 계획을 선택하세요.');
-  const tags = document.getElementById('rt-tags').value.split(',').map((s) => s.trim()).filter(Boolean);
-  const body = {
-    plan_id: planId,
-    title: document.getElementById('rt-title').value,
-    start_date: document.getElementById('rt-start').value,
-    end_date: document.getElementById('rt-end').value,
-    priority: document.getElementById('rt-priority').value,
-    estimated_minutes: Number(document.getElementById('rt-estimate').value),
-    tags,
-  };
   try {
-    await api('/routines', { method: 'POST', body: JSON.stringify(body) });
-    e.target.reset();
-    document.getElementById('rt-estimate').value = 15;
+    let canReplaceOriginal = todo.status !== 'done';
+    if (canReplaceOriginal) {
+      const logs = await api(`/logs?todo_id=${todo.id}`);
+      if (logs.length > 0) canReplaceOriginal = false;
+    }
+
+    await api('/routines', {
+      method: 'POST',
+      body: JSON.stringify({
+        plan_id: state.currentPlanId,
+        title: todo.title,
+        priority: todo.priority,
+        estimated_minutes: todo.estimated_minutes,
+        tags: todo.tags || [],
+        start_date,
+        end_date,
+      }),
+    });
+
+    if (canReplaceOriginal) {
+      await api(`/todos/${todo.id}`, { method: 'DELETE' });
+    }
+
     await loadRoutines();
     await loadCalendarData();
     renderCalendar();
@@ -687,15 +703,18 @@ document.getElementById('routineForm').addEventListener('submit', async (e) => {
   } catch (err) {
     alert(err.message);
   }
-});
+}
 
-async function openEditRoutine(routine) {
-  const start_date = prompt('시작일 (YYYY-MM-DD) — 이 날짜부터 매일 할 일이 생겨요', routine.start_date);
+async function editTodoRoutine(todo) {
+  const routine = (state.routines || []).find((r) => r.id === todo.routine_id);
+  const curStart = routine ? routine.start_date : (todo.due_date || toKstDateString(new Date()));
+  const curEnd = routine ? routine.end_date : curStart;
+  const start_date = prompt('시작일 (YYYY-MM-DD)', curStart);
   if (start_date === null) return;
-  const end_date = prompt('끝일 (YYYY-MM-DD)', routine.end_date);
+  const end_date = prompt('끝일 (YYYY-MM-DD)', curEnd);
   if (end_date === null) return;
   try {
-    await api(`/routines/${routine.id}`, {
+    await api(`/routines/${todo.routine_id}`, {
       method: 'PUT',
       body: JSON.stringify({ start_date, end_date }),
     });
@@ -708,10 +727,10 @@ async function openEditRoutine(routine) {
   }
 }
 
-async function deleteRoutine(id) {
-  if (!confirm('이 루틴을 삭제할까요? (이미 완료했거나 기록이 남은 할 일은 그대로 남아요)')) return;
+async function deleteTodoRoutine(todo) {
+  if (!confirm('이 반복 설정을 삭제할까요? (이미 완료했거나 기록이 남은 할 일은 그대로 남아요)')) return;
   try {
-    await api(`/routines/${id}`, { method: 'DELETE' });
+    await api(`/routines/${todo.routine_id}`, { method: 'DELETE' });
     await loadRoutines();
     await loadCalendarData();
     renderCalendar();
