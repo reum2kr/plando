@@ -379,10 +379,23 @@ form > button[type="submit"] {
 
 #calSelectedInfo { margin: 10px 2px 0; font-size: 12px; }
 
-/* ============ 할 일 / 돌아보기 블록 ============ */
-.todo-block, .review-block {
+/* ============ 할 일 / 루틴 / 돌아보기 블록 ============ */
+.todo-block, .routine-block, .review-block {
   margin-bottom: 28px;
 }
+.routine-block > p.muted { margin: 0 0 10px; font-size: 13px; }
+#routineList { list-style: none; padding: 0; }
+#routineList li {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow);
+}
+#routineList strong { font-size: 15px; }
+#routineList .meta { display: block; font-size: 12px; color: var(--muted); margin: 6px 0 10px; }
+.routine-badge { font-size: 12px; color: var(--accent-dark); margin-left: 6px; }
 .todo-block-header {
   display: flex;
   align-items: center;
