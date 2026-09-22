@@ -322,6 +322,9 @@ async function loadTodos() {
     const delBtn = el('button', { text: '삭제', onclick: () => deleteTodo(todo.id) });
 
     const rowBtns = [editBtn, doneBtn, logBtn, viewLogsBtn, delBtn];
+    if (todo.status === 'done') {
+      rowBtns.push(el('button', { text: '완료 시각 수정', onclick: () => editCompletedAt(todo) }));
+    }
     if (todo.routine_id) {
       rowBtns.push(el('button', { text: '기간 수정', onclick: () => editTodoRoutine(todo) }));
       rowBtns.push(el('button', { text: '반복 삭제', onclick: () => deleteTodoRoutine(todo) }));
@@ -400,6 +403,29 @@ async function toggleDone(todo) {
     } else {
       await api(`/todos/${todo.id}/complete`, { method: 'POST' });
     }
+    await loadCalendarData();
+    renderCalendar();
+    await loadTodos();
+    await loadReview();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+// 자정을 넘겨서야 "완료"를 누른 경우처럼, 실제로 끝낸 시각과 기록된 완료 시각이 다를 때
+// 완료 시각을 바로잡는다. 달력의 완료 배지는 이 completed_at 날짜를 기준으로 집계되므로,
+// 바로잡으면 달력에도 올바른 날짜에 표시된다.
+async function editCompletedAt(todo) {
+  const cur = todo.completed_at ? toLocalInputValue(todo.completed_at).replace('T', ' ') : '';
+  const input = prompt('실제로 완료한 시각으로 고쳐주세요 (YYYY-MM-DD HH:mm)', cur);
+  if (input === null) return;
+  const parsed = new Date(input.replace(' ', 'T'));
+  if (Number.isNaN(parsed.getTime())) return alert('시각 형식이 올바르지 않습니다. 예) 2026-09-21 23:50');
+  try {
+    await api(`/todos/${todo.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ completed_at: parsed.toISOString() }),
+    });
     await loadCalendarData();
     renderCalendar();
     await loadTodos();
