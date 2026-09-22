@@ -52,7 +52,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, due_date, priority, tags, estimated_minutes } = req.body;
+  const { title, due_date, priority, tags, estimated_minutes, completed_at } = req.body;
   if (priority && !VALID_PRIORITY.has(priority)) {
     return res.status(400).json({ error: 'priority는 high/medium/low 중 하나여야 합니다.' });
   }
@@ -60,11 +60,18 @@ router.put('/:id', async (req, res) => {
   if (cur.rows.length === 0) return res.status(404).json({ error: 'todo not found' });
   const b = cur.rows[0];
 
+  // completed_at 수정은 "이미 완료한 할 일을 자정 넘겨서야 기록한" 경우처럼
+  // 실제로 끝낸 시각에 맞게 바로잡는 용도다. 아직 완료 전인 할 일에는 의미가 없으니 막는다.
+  if (completed_at !== undefined && b.status !== 'done') {
+    return res.status(400).json({ error: '완료된 할 일만 완료 시각을 수정할 수 있습니다.' });
+  }
+
   const { rows } = await pool.query(
-    `UPDATE todos SET title=$1, due_date=$2, priority=$3, tags=$4, estimated_minutes=$5, updated_at=now()
-     WHERE id=$6 RETURNING *`,
+    `UPDATE todos SET title=$1, due_date=$2, priority=$3, tags=$4, estimated_minutes=$5, completed_at=$6, updated_at=now()
+     WHERE id=$7 RETURNING *`,
     [title ?? b.title, due_date !== undefined ? due_date : b.due_date, priority ?? b.priority,
-     tags ?? b.tags, estimated_minutes ?? b.estimated_minutes, id]
+     tags ?? b.tags, estimated_minutes ?? b.estimated_minutes,
+     completed_at !== undefined ? completed_at : b.completed_at, id]
   );
   res.json(rows[0]);
 });
