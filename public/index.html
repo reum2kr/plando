@@ -16,7 +16,25 @@
       <h1>플랜두씨 다이어리</h1>
       <p class="splash-tagline">계획을 세우고(Plan), 실천하고(Do), 돌아보는(See)<br />나만의 습관 다이어리예요.</p>
       <button id="startBtn" class="start-btn">시작하기</button>
-      <p class="splash-note">지금은 로그인 없이 링크로만 접속해요. 로그인은 다음 버전에서 추가할 예정이에요.</p>
+      <p class="splash-note">이메일과 비밀번호로 로그인하면 나만의 계획과 기록만 볼 수 있어요.</p>
+    </div>
+  </div>
+
+  <!-- ============ 로그인 / 회원가입 ============ -->
+  <div id="authScreen" class="splash" style="display:none;">
+    <div class="splash-inner">
+      <div class="splash-badge">Plan · Do · See</div>
+      <h1 id="authTitle">로그인</h1>
+      <form id="authForm">
+        <input type="email" id="a-email" placeholder="이메일" required />
+        <input type="password" id="a-password" placeholder="비밀번호 (8자 이상)" required minlength="8" />
+        <button type="submit" id="authSubmitBtn" class="start-btn">로그인</button>
+      </form>
+      <p class="splash-note" id="authError" style="color:#c0392b;"></p>
+      <p class="splash-note">
+        <span id="authToggleText">계정이 없으신가요?</span>
+        <button type="button" id="authToggleBtn" class="ghost-btn">회원가입</button>
+      </p>
     </div>
   </div>
 
@@ -25,10 +43,13 @@
     <header>
       <h1>플랜두씨 다이어리</h1>
       <p class="notice">
-        지금은 로그인이 없어 링크를 아는 사람은 누구나 볼 수 있습니다. 남이 봐도 괜찮은 내용만 넣으세요.
+        로그인한 사람만 자신의 계획을 볼 수 있어요. 그래도 남이 봐도 괜찮은 내용만 넣으세요.
       </p>
       <nav>
+        <span class="muted" id="userEmailLabel"></span>
         <button id="exportBtn" class="tab-btn export">내보내기</button>
+        <button id="logoutBtn" class="tab-btn">로그아웃</button>
+        <button id="deleteAccountBtn" class="tab-btn">계정 삭제</button>
       </nav>
     </header>
 
