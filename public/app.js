@@ -286,10 +286,10 @@ document.getElementById('calNext').addEventListener('click', () => {
   renderCalendar();
 });
 
-// 선택한 계획의 모든 할 일을 가져와 완료된 날짜별 개수를 집계한다 (완료 시각 completed_at 기준, KST).
+// 계획과 상관없이 내 모든 할 일을 가져와 완료된 날짜별 개수를 집계한다 (완료 시각 completed_at 기준, KST).
+// 계획을 바꿔도 달력에는 예전 계획 때 기록까지 계속 보이게 하기 위해 plan_id로 거르지 않는다.
 async function loadCalendarData() {
-  const planId = state.currentPlanId;
-  const { items } = await api(`/todos?plan_id=${planId}&sort=due_date`);
+  const { items } = await api(`/todos?sort=due_date`);
   const map = {};
   for (const todo of items) {
     if (todo.status === 'done' && todo.completed_at) {
@@ -356,8 +356,7 @@ document.getElementById('clearDateFilter').addEventListener('click', () => {
 // 기본적으로는 아무 할 일도 띄우지 않는다. 달력에서 날짜를 고르면 그 날짜의 할 일만,
 // "전체보기"를 누르면 전체 목록을 보여준다 (루틴으로 할 일이 많아져도 목록이 한눈에 정신없지 않도록).
 async function loadTodos() {
-  const planId = state.currentPlanId;
-  if (!planId) return;
+  if (!state.currentPlanId) return;
 
   const list = document.getElementById('todoList');
 
@@ -368,7 +367,9 @@ async function loadTodos() {
     return;
   }
 
-  const params = new URLSearchParams({ plan_id: planId });
+  // 계획을 바꿔도 예전 계획 때 만든 할 일까지 계속 보이도록 plan_id로 거르지 않고
+  // 내 계정의 모든 할 일 중에서 날짜/검색/상태로만 좁힌다.
+  const params = new URLSearchParams();
   const q = document.getElementById('t-search').value;
   const status = document.getElementById('t-filter-status').value;
   const sort = document.getElementById('t-sort').value;
@@ -771,9 +772,10 @@ document.getElementById('noteForm').addEventListener('submit', async (e) => {
 // 루틴이 만들어진다. 기간을 조정하면 새로 포함된 날짜엔 할 일이 추가되고, 빠진 날짜의 할 일 중
 // 아직 완료 전이고 실행 기록도 없는 것만 지워진다(이미 있었던 기록은 그대로 보존).
 async function loadRoutines() {
-  const planId = state.currentPlanId;
-  if (!planId) return;
-  state.routines = await api(`/routines?plan_id=${planId}`);
+  if (!state.currentPlanId) return;
+  // 계획을 바꿔도 다른 계획 소속 할 일의 "반복 설정" 정보를 찾을 수 있도록
+  // 내 계정의 모든 루틴을 가져온다(plan_id로 거르지 않음).
+  state.routines = await api(`/routines`);
 }
 
 // 평범한 할 일을 "반복(루틴)"으로 바꾼다: 같은 제목/우선순위/예상시간/태그로
