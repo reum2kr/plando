@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const {
-  hashPassword, verifyPassword, createSession, destroySession,
+  hashPassword, verifyPassword, createSession, destroySession, destroyAllSessionsForUser,
   setSessionCookie, clearSessionCookie, SESSION_COOKIE, requireAuth,
 } = require('../util/auth');
 
@@ -83,6 +83,31 @@ router.post('/logout', async (req, res) => {
 // GET /api/auth/me - 현재 로그인 여부 확인용
 router.get('/me', requireAuth, async (req, res) => {
   res.json({ id: req.user.id, email: req.user.email });
+});
+
+// PUT /api/auth/password - 비밀번호 변경. 성공하면 이 세션만 남기고
+// 그 계정으로 발급된 다른 모든 세션(다른 기기/브라우저에 남아있던 로그인)을 무효화한다.
+router.put('/password', requireAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: '현재 비밀번호와 새 비밀번호를 모두 입력하세요.' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: '새 비밀번호는 8자 이상이어야 합니다.' });
+  }
+  const { rows } = await pool.query(`SELECT * FROM users WHERE id=$1`, [req.user.id]);
+  const user = rows[0];
+  if (!user || !(await verifyPassword(currentPassword, user.password_hash))) {
+    return res.status(401).json({ error: '현재 비밀번호가 올바르지 않습니다.' });
+  }
+  const newHash = await hashPassword(newPassword);
+  await pool.query(`UPDATE users SET password_hash=$1 WHERE id=$2`, [newHash, user.id]);
+
+  // 지금 이 요청을 보낸 세션(현재 로그인)만 남기고 나머지는 전부 지운다.
+  const currentToken = req.cookies ? req.cookies[SESSION_COOKIE] : null;
+  await destroyAllSessionsForUser(user.id, currentToken);
+
+  res.json({ ok: true });
 });
 
 // DELETE /api/auth/me - 계정과 내 자료를 모두 지운다 (되돌릴 수 없어서 비밀번호를 다시 확인한다)
