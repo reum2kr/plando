@@ -48,9 +48,13 @@
       <nav>
         <span class="muted" id="userEmailLabel"></span>
         <button id="exportBtn" class="tab-btn export">내보내기</button>
+        <button id="changePasswordBtn" class="tab-btn">비밀번호 변경</button>
         <button id="logoutBtn" class="tab-btn">로그아웃</button>
-        <button id="deleteAccountBtn" class="tab-btn">계정 삭제</button>
+        <button id="deleteAccountBtn" class="tab-btn danger">계정 삭제</button>
       </nav>
+      <p class="notice danger-note">
+        계정을 삭제하면 내 계획·할 일·실행 기록이 모두 함께 삭제되며, 되돌릴 수 없어요.
+      </p>
     </header>
 
     <main class="layout">
@@ -160,6 +164,21 @@
       </section>
     </main>
   </div>
+
+  <!-- 비밀번호 변경 모달 -->
+  <dialog id="passwordDialog">
+    <form id="passwordForm" method="dialog">
+      <h3>비밀번호 변경</h3>
+      <label>현재 비밀번호 <input type="password" id="pw-current" required /></label>
+      <label>새 비밀번호 (8자 이상) <input type="password" id="pw-new" required minlength="8" /></label>
+      <p class="splash-note" id="passwordError" style="color:#c0392b;"></p>
+      <p class="splash-note">변경하면 다른 기기/브라우저에 남아있던 로그인은 모두 풀리고, 지금 이 화면만 로그인 상태로 유지돼요.</p>
+      <div class="row">
+        <button type="submit">변경</button>
+        <button type="button" id="pw-cancel">취소</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- 실행 기록 입력 모달 -->
   <dialog id="logDialog">
