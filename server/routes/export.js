@@ -3,13 +3,34 @@ const pool = require('../db/pool');
 
 const router = express.Router();
 
-// GET /api/export - 내 자료 전체를 파일 하나(JSON)로 내려받기
 router.get('/', async (req, res) => {
-  const plans = await pool.query(`SELECT * FROM plans WHERE deleted_at IS NULL ORDER BY created_at`);
-  const revisions = await pool.query(`SELECT * FROM plan_revisions ORDER BY plan_id, revision_no`);
-  const todos = await pool.query(`SELECT * FROM todos WHERE deleted_at IS NULL ORDER BY created_at`);
-  const logs = await pool.query(`SELECT * FROM execution_logs ORDER BY started_at`);
-  const notes = await pool.query(`SELECT * FROM review_notes ORDER BY created_at`);
+  const userId = req.user.id;
+
+  const plans = await pool.query(
+    `SELECT * FROM plans WHERE deleted_at IS NULL AND user_id=$1 ORDER BY created_at`,
+    [userId]
+  );
+  const revisions = await pool.query(
+    `SELECT r.* FROM plan_revisions r JOIN plans p ON p.id=r.plan_id
+     WHERE p.user_id=$1 ORDER BY r.plan_id, r.revision_no`,
+    [userId]
+  );
+  const todos = await pool.query(
+    `SELECT t.* FROM todos t JOIN plans p ON p.id=t.plan_id
+     WHERE t.deleted_at IS NULL AND p.user_id=$1 ORDER BY t.created_at`,
+    [userId]
+  );
+  const logs = await pool.query(
+    `SELECT l.* FROM execution_logs l
+     JOIN todos t ON t.id=l.todo_id JOIN plans p ON p.id=t.plan_id
+     WHERE p.user_id=$1 ORDER BY l.started_at`,
+    [userId]
+  );
+  const notes = await pool.query(
+    `SELECT n.* FROM review_notes n JOIN plans p ON p.id=n.plan_id
+     WHERE p.user_id=$1 ORDER BY n.created_at`,
+    [userId]
+  );
 
   const payload = {
     exported_at: new Date().toISOString(),
