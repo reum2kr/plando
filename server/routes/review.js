@@ -4,6 +4,14 @@ const { todayKstDateString } = require('../util/time');
 
 const router = express.Router();
 
+async function planBelongsToUser(planId, userId) {
+  const { rows } = await pool.query(
+    `SELECT id FROM plans WHERE id=$1 AND deleted_at IS NULL AND user_id=$2`,
+    [planId, userId]
+  );
+  return rows.length > 0;
+}
+
 async function computeAggregate(planId) {
   const today = todayKstDateString();
 
@@ -53,17 +61,18 @@ async function computeAggregate(planId) {
   };
 }
 
-// GET /api/review/:planId
 router.get('/:planId', async (req, res) => {
-  const plan = await pool.query(`SELECT id FROM plans WHERE id=$1 AND deleted_at IS NULL`, [req.params.planId]);
-  if (plan.rows.length === 0) return res.status(404).json({ error: 'plan not found' });
+  if (!(await planBelongsToUser(req.params.planId, req.user.id))) {
+    return res.status(404).json({ error: 'plan not found' });
+  }
   res.json(await computeAggregate(req.params.planId));
 });
 
-// GET /api/review/:planId/drilldown/:metric
-// 집계 숫자를 눌렀을 때 그 숫자를 만든 실제 기록으로 이동하기 위한 엔드포인트.
 router.get('/:planId/drilldown/:metric', async (req, res) => {
   const { planId, metric } = req.params;
+  if (!(await planBelongsToUser(planId, req.user.id))) {
+    return res.status(404).json({ error: 'plan not found' });
+  }
   const today = todayKstDateString();
 
   switch (metric) {
@@ -118,18 +127,25 @@ router.get('/:planId/drilldown/:metric', async (req, res) => {
   }
 });
 
-// GET /api/review/:planId/notes
 router.get('/:planId/notes', async (req, res) => {
+  if (!(await planBelongsToUser(req.params.planId, req.user.id))) {
+    return res.status(404).json({ error: 'plan not found' });
+  }
   const { rows } = await pool.query(
     `SELECT * FROM review_notes WHERE plan_id=$1 ORDER BY created_at DESC`, [req.params.planId]
   );
   res.json(rows);
 });
 
-// POST /api/review/:planId/notes - 돌아보기에서 정한 "고칠 점 한 줄"
 router.post('/:planId/notes', async (req, res) => {
+  if (!(await planBelongsToUser(req.params.planId, req.user.id))) {
+    return res.status(404).json({ error: 'plan not found' });
+  }
   const { note, carried_into_plan_id } = req.body;
   if (!note) return res.status(400).json({ error: 'note는 필수입니다.' });
+  if (carried_into_plan_id && !(await planBelongsToUser(carried_into_plan_id, req.user.id))) {
+    return res.status(404).json({ error: 'target plan not found' });
+  }
   const { rows } = await pool.query(
     `INSERT INTO review_notes (plan_id, note, carried_into_plan_id) VALUES ($1,$2,$3) RETURNING *`,
     [req.params.planId, note, carried_into_plan_id || null]
@@ -137,9 +153,10 @@ router.post('/:planId/notes', async (req, res) => {
   res.status(201).json(rows[0]);
 });
 
-// PUT /api/review/:planId/notes/:noteId - 메모 내용 수정, 또는 "다음 계획으로 넘기기"
-// (carried_into_plan_id를 넘기면 그 계획으로 연결된다. note만 보내면 내용만 바뀐다.)
 router.put('/:planId/notes/:noteId', async (req, res) => {
+  if (!(await planBelongsToUser(req.params.planId, req.user.id))) {
+    return res.status(404).json({ error: 'plan not found' });
+  }
   const cur = await pool.query(
     `SELECT * FROM review_notes WHERE id=$1 AND plan_id=$2`,
     [req.params.noteId, req.params.planId]
@@ -148,6 +165,9 @@ router.put('/:planId/notes/:noteId', async (req, res) => {
   const b = cur.rows[0];
   const { note, carried_into_plan_id } = req.body;
   if (note !== undefined && !note) return res.status(400).json({ error: 'note는 빈 값일 수 없습니다.' });
+  if (carried_into_plan_id && !(await planBelongsToUser(carried_into_plan_id, req.user.id))) {
+    return res.status(404).json({ error: 'target plan not found' });
+  }
 
   const { rows } = await pool.query(
     `UPDATE review_notes SET note=$1, carried_into_plan_id=$2 WHERE id=$3 AND plan_id=$4 RETURNING *`,
@@ -161,8 +181,10 @@ router.put('/:planId/notes/:noteId', async (req, res) => {
   res.json(rows[0]);
 });
 
-// DELETE /api/review/:planId/notes/:noteId - 메모 삭제
 router.delete('/:planId/notes/:noteId', async (req, res) => {
+  if (!(await planBelongsToUser(req.params.planId, req.user.id))) {
+    return res.status(404).json({ error: 'plan not found' });
+  }
   const { rows } = await pool.query(
     `DELETE FROM review_notes WHERE id=$1 AND plan_id=$2 RETURNING id`,
     [req.params.noteId, req.params.planId]
