@@ -94,6 +94,15 @@ router.get('/my-password-hash', requireAuth, async (req, res) => {
   res.json({ email: req.user.email, password_hash: rows[0]?.password_hash || null });
 });
 
+// GET /api/auth/debug-state - 계정 삭제 버그를 진단하기 위한 임시 경로.
+// 로그인한 사람만 볼 수 있고, users/sessions 테이블 전체를 그대로 보여준다.
+// 진단 끝나면 반드시 지울 것.
+router.get('/debug-state', requireAuth, async (req, res) => {
+  const users = await pool.query(`SELECT id, email, created_at FROM users ORDER BY created_at`);
+  const sessions = await pool.query(`SELECT token, user_id, created_at, expires_at FROM sessions ORDER BY created_at`);
+  res.json({ users: users.rows, sessions: sessions.rows });
+});
+
 // PUT /api/auth/password - 비밀번호 변경. 성공하면 이 세션만 남기고
 // 그 계정으로 발급된 다른 모든 세션(다른 기기/브라우저에 남아있던 로그인)을 무효화한다.
 router.put('/password', requireAuth, async (req, res) => {
