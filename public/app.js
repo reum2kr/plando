@@ -141,6 +141,38 @@ document.getElementById('deleteAccountBtn').addEventListener('click', async () =
   }
 });
 
+// 비밀번호 변경: 성공하면 다른 기기/브라우저의 기존 세션은 모두 무효화되고
+// (Card 3 "비밀번호를 바꾸면 이전 발급값이 더는 통하지 않는다"),
+// 지금 이 화면만 로그인 상태로 유지된다.
+document.getElementById('changePasswordBtn').addEventListener('click', () => {
+  document.getElementById('pw-current').value = '';
+  document.getElementById('pw-new').value = '';
+  document.getElementById('passwordError').textContent = '';
+  document.getElementById('passwordDialog').showModal();
+});
+
+document.getElementById('pw-cancel').addEventListener('click', () => {
+  document.getElementById('passwordDialog').close();
+});
+
+document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const currentPassword = document.getElementById('pw-current').value;
+  const newPassword = document.getElementById('pw-new').value;
+  const errBox = document.getElementById('passwordError');
+  errBox.textContent = '';
+  try {
+    await api('/auth/password', {
+      method: 'PUT',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    document.getElementById('passwordDialog').close();
+    alert('비밀번호가 변경되었습니다. 다른 기기에 남아있던 로그인은 모두 풀렸습니다.');
+  } catch (err) {
+    errBox.textContent = err.message;
+  }
+});
+
 // ---------- 계획 (Plan) ----------
 async function loadPlans() {
   state.plans = await api('/plans');
