@@ -22,18 +22,20 @@ function validatePlanBody(body, { partial = false } = {}) {
   return errors;
 }
 
-// GET /api/plans - 목록 (지우지 않은 것만)
 router.get('/', async (req, res) => {
   const { rows } = await pool.query(
-    `SELECT * FROM plans WHERE deleted_at IS NULL ORDER BY created_at DESC`
+    `SELECT * FROM plans WHERE deleted_at IS NULL AND user_id=$1 ORDER BY created_at DESC`,
+    [req.user.id]
   );
   res.json(rows);
 });
 
-// GET /api/plans/:id - 단건 + 수정 이력
 router.get('/:id', async (req, res) => {
   const { id } = req.params;
-  const planRes = await pool.query(`SELECT * FROM plans WHERE id = $1 AND deleted_at IS NULL`, [id]);
+  const planRes = await pool.query(
+    `SELECT * FROM plans WHERE id = $1 AND deleted_at IS NULL AND user_id=$2`,
+    [id, req.user.id]
+  );
   if (planRes.rows.length === 0) return res.status(404).json({ error: 'plan not found' });
 
   const revRes = await pool.query(
@@ -43,21 +45,19 @@ router.get('/:id', async (req, res) => {
   res.json({ ...planRes.rows[0], revisions: revRes.rows });
 });
 
-// POST /api/plans - 계획 생성
 router.post('/', async (req, res) => {
   const errors = validatePlanBody(req.body);
   if (errors.length) return res.status(400).json({ errors });
 
   const { title, period_start, period_end, priority, success_criteria, estimated_minutes } = req.body;
   const { rows } = await pool.query(
-    `INSERT INTO plans (title, period_start, period_end, priority, success_criteria, estimated_minutes)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [title, period_start, period_end, priority, success_criteria, estimated_minutes]
+    `INSERT INTO plans (user_id, title, period_start, period_end, priority, success_criteria, estimated_minutes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [req.user.id, title, period_start, period_end, priority, success_criteria, estimated_minutes]
   );
   res.status(201).json(rows[0]);
 });
 
-// PUT /api/plans/:id - 계획 수정 (수정 전 값은 plan_revisions에 보존, id는 그대로)
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
   const errors = validatePlanBody(req.body, { partial: true });
@@ -66,7 +66,10 @@ router.put('/:id', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const cur = await client.query(`SELECT * FROM plans WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, [id]);
+    const cur = await client.query(
+      `SELECT * FROM plans WHERE id = $1 AND deleted_at IS NULL AND user_id=$2 FOR UPDATE`,
+      [id, req.user.id]
+    );
     if (cur.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'plan not found' });
@@ -79,7 +82,6 @@ router.put('/:id', async (req, res) => {
     );
     const nextRevisionNo = nextRevRes.rows[0].next;
 
-    // 수정 전 값을 이력으로 먼저 저장
     await client.query(
       `INSERT INTO plan_revisions
          (plan_id, revision_no, title, period_start, period_end, priority, success_criteria, estimated_minutes)
@@ -114,12 +116,11 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/plans/:id - soft delete
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
   const { rows } = await pool.query(
-    `UPDATE plans SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
-    [id]
+    `UPDATE plans SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL AND user_id=$2 RETURNING id`,
+    [id, req.user.id]
   );
   if (rows.length === 0) return res.status(404).json({ error: 'plan not found' });
   res.status(204).end();
