@@ -30,6 +30,12 @@ async function api(path, opts = {}) {
     headers: { 'Content-Type': 'application/json' },
     ...opts,
   });
+  // /auth/ 쪽 요청(로그인 시도 등) 말고, 앱을 쓰다가 세션이 끊긴 경우엔
+  // 로그인 화면으로 돌려보낸다.
+  if (res.status === 401 && !path.startsWith('/auth/')) {
+    showAuthScreen();
+    throw new Error('세션이 만료되었습니다. 다시 로그인해주세요.');
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || body.errors?.join(', ') || `요청 실패 (${res.status})`);
@@ -47,11 +53,92 @@ function toKstDateString(dateLike) {
   return fmt.format(d);
 }
 
-// ---------- 시작 화면 ----------
-document.getElementById('startBtn').addEventListener('click', () => {
+// ---------- 시작 화면 / 로그인 ----------
+let authMode = 'login'; // 'login' | 'signup'
+
+async function checkSession() {
+  const res = await fetch('/api/auth/me');
+  if (!res.ok) return null;
+  return res.json();
+}
+
+function showAuthScreen() {
   document.getElementById('splashScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'none';
+  document.getElementById('authScreen').style.display = 'block';
+}
+
+function enterApp(user) {
+  document.getElementById('splashScreen').style.display = 'none';
+  document.getElementById('authScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'block';
+  document.getElementById('userEmailLabel').textContent = user.email;
   loadPlans();
+}
+
+document.getElementById('startBtn').addEventListener('click', async () => {
+  const user = await checkSession();
+  if (user) {
+    enterApp(user);
+  } else {
+    showAuthScreen();
+  }
+});
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const isLogin = mode === 'login';
+  document.getElementById('authTitle').textContent = isLogin ? '로그인' : '회원가입';
+  document.getElementById('authSubmitBtn').textContent = isLogin ? '로그인' : '회원가입';
+  document.getElementById('authToggleText').textContent = isLogin ? '계정이 없으신가요?' : '이미 계정이 있으신가요?';
+  document.getElementById('authToggleBtn').textContent = isLogin ? '회원가입' : '로그인';
+  document.getElementById('authError').textContent = '';
+}
+
+document.getElementById('authToggleBtn').addEventListener('click', () => {
+  setAuthMode(authMode === 'login' ? 'signup' : 'login');
+});
+
+document.getElementById('authForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('a-email').value;
+  const password = document.getElementById('a-password').value;
+  const errBox = document.getElementById('authError');
+  errBox.textContent = '';
+  try {
+    const path = authMode === 'login' ? '/auth/login' : '/auth/signup';
+    const user = await api(path, { method: 'POST', body: JSON.stringify({ email, password }) });
+    document.getElementById('authForm').reset();
+    enterApp(user);
+  } catch (err) {
+    errBox.textContent = err.message;
+  }
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  try {
+    await api('/auth/logout', { method: 'POST' });
+  } catch (err) {
+    // 세션이 이미 끊겼어도 로그인 화면으로는 돌아가야 하므로 무시한다.
+  }
+  setAuthMode('login');
+  showAuthScreen();
+});
+
+// 계정과 그 안의 모든 자료(계획/할 일/기록)를 영구히 지운다. 되돌릴 수 없어서
+// 비밀번호를 한 번 더 확인한다.
+document.getElementById('deleteAccountBtn').addEventListener('click', async () => {
+  if (!confirm('계정을 삭제하면 내 계획·할 일·기록이 모두 사라지고 되돌릴 수 없습니다. 계속할까요?')) return;
+  const password = prompt('본인 확인을 위해 비밀번호를 입력하세요.');
+  if (!password) return;
+  try {
+    await api('/auth/me', { method: 'DELETE', body: JSON.stringify({ password }) });
+    alert('계정과 자료가 모두 삭제되었습니다.');
+    setAuthMode('login');
+    showAuthScreen();
+  } catch (err) {
+    alert(err.message);
+  }
 });
 
 // ---------- 계획 (Plan) ----------
