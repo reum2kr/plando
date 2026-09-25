@@ -160,6 +160,18 @@ nav {
   border-color: var(--accent);
 }
 .tab-btn.export:hover { background: var(--accent-soft); }
+.tab-btn.danger {
+  color: #c0392b;
+  border-color: #e6a49a;
+}
+.tab-btn.danger:hover { background: #fbecea; border-color: #c0392b; color: #c0392b; }
+
+.danger-note {
+  margin-top: 10px;
+  background: #fbeceb;
+  border-color: #e6a49a;
+  color: #a3352a;
+}
 
 .ghost-btn {
   padding: 6px 12px;
