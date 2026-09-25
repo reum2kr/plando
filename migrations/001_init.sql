@@ -103,3 +103,19 @@ CREATE TABLE IF NOT EXISTS routines (
 ALTER TABLE todos ADD COLUMN IF NOT EXISTS routine_id UUID NULL REFERENCES routines(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_todos_routine_id ON todos(routine_id);
 CREATE INDEX IF NOT EXISTS idx_routines_plan_id ON routines(plan_id);
+
+-- 인증(T07): 이메일+비밀번호 계정과 로그인 세션.
+CREATE TABLE IF NOT EXISTS users (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email              TEXT NOT NULL UNIQUE,
+  password_hash      TEXT NOT NULL,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token              TEXT PRIMARY KEY,
+  user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at         TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
